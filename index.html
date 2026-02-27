@@ -12,7 +12,7 @@
              user-scalable=no, viewport-fit=cover"
   />
 
-  <link rel="stylesheet" href="TemplateData/style.css" />
+  TemplateData/style.css
 
   <style>
     html, body {
@@ -63,27 +63,6 @@
     #unity-canvas {
       background: black;
     }
-
-    /* Animated loading spinner */
-    #loading-spinner {
-      width: 70px;
-      height: 70px;
-      border: 6px solid rgba(255,255,255,0.15);
-      border-top-color: #4FC3F7;
-      border-radius: 50%;
-      animation: spin 0.9s linear infinite;
-      margin-top: 30px;
-      opacity: 0;
-      transition: opacity 0.3s ease-out;
-    }
-
-    #loading-spinner.visible {
-      opacity: 1;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
   </style>
 </head>
 
@@ -106,9 +85,6 @@
       <div id="unity-progress-bar-empty">
         <div id="unity-progress-bar-full"></div>
       </div>
-
-      <!-- Spinner -->
-      <div id="loading-spinner"></div>
     </div>
 
     <div id="unity-warning"></div>
@@ -127,7 +103,6 @@
     const progressBarFull = document.querySelector("#unity-progress-bar-full");
     const startOverlay = document.querySelector("#custom-start-overlay");
     const playButton = document.querySelector("#btn-play");
-    const loadingSpinner = document.querySelector("#loading-spinner");
 
     const isIOS =
       /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -157,7 +132,6 @@
     playButton.onclick = async () => {
       startOverlay.style.display = "none";
       loadingBar.style.display = "block";
-      loadingSpinner.classList.add("visible");
 
       await goFullscreen();
       await lockLandscape();
@@ -189,8 +163,6 @@
       script.onload = () => {
         createUnityInstance(canvas, config, (progress) => {
           progressBarFull.style.width = progress * 100 + "%";
-        }).then(() => {
-          loadingSpinner.classList.remove("visible");
         });
       };
 
