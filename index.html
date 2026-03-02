@@ -1,393 +1,171 @@
 <!DOCTYPE html>
-
 <html lang="en-us">
-
 <head>
-
   <meta charset="utf-8" />
-
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-
   <title>Unity WebGL Player | KystAR</title>
 
-
-
-  <!-- Mobile viewport -->
-
   <meta
-
     name="viewport"
-
-    content="width=device-width, height=device-height, initial-scale=1.0,
-
-             user-scalable=no, viewport-fit=cover"
-
+    content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover"
   />
 
-
-
-  <!-- Unity template styles (make sure this path exists) -->
-
-  <link rel="stylesheet" href="TemplateData/style.css" />
-
-
-
   <style>
-
-    :root {
-
-      --app-height: 100vh; /* JS will overwrite with the real visible height */
-
-    }
-
-
-
+    /* Prevent the 'bounce' effect and ensure the app fills the true visible area */
     html, body {
-
       margin: 0;
-
       padding: 0;
-
       background: black;
-
-      height: 100%;
-
-      overflow: hidden;
-
-
-
-      /* Helps prevent iOS "rubber band" scroll affecting the viewport */
-
-      position: fixed;
-
       width: 100%;
-
-      height: 100%;
-
-      overscroll-behavior: none;
-
+      height: 100vh;
+      height: 100dvh; 
+      overflow: hidden;
+      position: fixed; 
+      left: 0;
+      top: 0;
     }
-
-
 
     #unity-container {
-
-      position: fixed;
-
-      inset: 0;
-
-      width: 100vw;
-
-      height: var(--app-height);
-
+      width: 100%;
+      height: 100%;
+      position: relative;
       background: #000;
-
       overflow: hidden;
-
+      padding-bottom: env(safe-area-inset-bottom);
       box-sizing: border-box;
-
-
-
-      /* Safe-area padding (mostly relevant on iPhone, still safe on iPad) */
-
-      padding: env(safe-area-inset-top) env(safe-area-inset-right)
-
-               env(safe-area-inset-bottom) env(safe-area-inset-left);
-
     }
-
-
 
     #unity-canvas {
-
-      width: 100%;
-
-      height: 100%;
-
-      display: block;
-
       background: black;
-
-      touch-action: none; /* avoid page gestures stealing touches */
-
+      display: block;
+      width: 100%;
+      height: 100%;
     }
-
-
-
-    /* Start button overlay (visible immediately) */
 
     #custom-start-overlay {
-
       position: absolute;
-
       inset: 0;
-
       width: 100%;
-
       height: 100%;
-
       background: rgba(0,0,0,0.85);
-
       display: flex;
-
       flex-direction: column;
-
       justify-content: center;
-
       align-items: center;
-
       z-index: 1000;
-
-
-
-      /* Also respect safe areas */
-
-      padding: env(safe-area-inset-top) env(safe-area-inset-right)
-
-               env(safe-area-inset-bottom) env(safe-area-inset-left);
-
-      box-sizing: border-box;
-
     }
-
-
 
     #btn-play {
-
       padding: 20px 40px;
-
       font-size: 24px;
-
       color: white;
-
       background: #2196F3;
-
       border: none;
-
       border-radius: 12px;
-
       cursor: pointer;
-
     }
-
-
 
     #btn-play:active {
-
       background: #1976D2;
-
       transform: scale(0.97);
-
     }
-
   </style>
-
 </head>
 
-
-
 <body>
-
   <div id="unity-container">
-
     <canvas id="unity-canvas" width="960" height="540" tabindex="-1"></canvas>
 
-
-
-    <!-- Visible immediately -->
-
     <div id="custom-start-overlay">
-
       <button id="btn-play">START APP</button>
-
       <p style="color:white; margin-top:10px;">
-
-        Tap to enter fullscreen &amp; landscape
-
+        Tap to enter fullscreen & landscape
       </p>
-
     </div>
 
-
-
-    <!-- Unity loading bar -->
-
-    <div id="unity-loading-bar" style="display:none;">
-
-      <div id="unity-logo"></div>
-
-      <div id="unity-progress-bar-empty">
-
-        <div id="unity-progress-bar-full"></div>
-
+    <div id="unity-loading-bar" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); text-align:center;">
+      <div id="unity-progress-bar-empty" style="width:200px; height:10px; background:gray; margin-top:10px;">
+        <div id="unity-progress-bar-full" style="width:0%; height:100%; background:white;"></div>
       </div>
-
     </div>
-
-
-
-    <div id="unity-warning"></div>
-
-
-
-    <div id="unity-footer">
-
-      <div id="unity-webgl-logo"></div>
-
-      <div id="unity-fullscreen-button"></div>
-
-      <div id="unity-build-title">KystAR</div>
-
-    </div>
-
   </div>
 
-
-
   <script>
-
     const container = document.querySelector("#unity-container");
-
     const canvas = document.querySelector("#unity-canvas");
-
     const loadingBar = document.querySelector("#unity-loading-bar");
-
     const progressBarFull = document.querySelector("#unity-progress-bar-full");
-
     const startOverlay = document.querySelector("#custom-start-overlay");
-
     const playButton = document.querySelector("#btn-play");
 
-
-
-    // iPadOS can report as MacIntel with touch points
-
-    const isIOS =
-
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
-
-
-    // --- Key fix: use the *visual* viewport height (what is actually visible) ---
-
-    function setAppHeight() {
-
-      const vv = window.visualViewport;
-
-      const h = vv?.height ?? window.innerHeight; // fallback
-
-      document.documentElement.style.setProperty("--app-height", `${Math.round(h)}px`);
-
-    }
-
-
-
+    // Most accurate height for iPad Safari
     function fillScreen() {
-
-      // Size to visible height; avoids iOS Safari bottom toolbar cutting content
-
-      container.style.width = "100vw";
-
-      container.style.height = "var(--app-height)";
-
-      canvas.style.width = "100%";
-
-      canvas.style.height = "100%";
-
+      const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      container.style.height = vh + "px";
+      // Don't scroll—stay locked
+      window.scrollTo(0, 0);
     }
-
-
-
-    // Call at startup and keep updated
-
-    setAppHeight();
-
-    fillScreen();
-
-
-
-    window.addEventListener("resize", () => {
-
-      setAppHeight();
-
-      fillScreen();
-
-    });
-
-
-
-    window.addEventListener("orientationchange", () => {
-
-      setTimeout(() => {
-
-        setAppHeight();
-
-        fillScreen();
-
-      }, 300);
-
-    });
-
-
-
-    // VisualViewport events (best on iOS Safari)
-
-    if (window.visualViewport) {
-
-      window.visualViewport.addEventListener("resize", () => {
-
-        setAppHeight();
-
-        fillScreen();
-
-      });
-
-      window.visualViewport.addEventListener("scroll", () => {
-
-        setAppHeight();
-
-        fillScreen();
-
-      });
-
-    }
-
-
 
     async function goFullscreen() {
-
-      // Fullscreen API is not consistently supported on iOS for non-video elements,
-
-      // so we always apply fillScreen() as the real fix.
-
-      try {
-
-        if (container.requestFullscreen) {
-
-          await container.requestFullscreen();
-
-        }
-
-      } catch (e) { /* ignore */ }
-
-
-
-      setAppHeight();
-
+      if (container.requestFullscreen) {
+        try { await container.requestFullscreen(); } catch (e) {}
+      } 
       fillScreen();
-
     }
 
     async function lockLandscape() {
-
       try {
-
         if (screen.orientation && screen.orientation.lock) {
-
           await screen.orientation.lock("landscape");
-
         }
+      } catch (e) {}
+    }
 
-      } catch (e) { /* ignore */ }
+    playButton.onclick = async () => {
+      startOverlay.style.display = "none";
+      loadingBar.style.display = "block";
+
+      await goFullscreen();
+      await lockLandscape();
+      fillScreen();
+
+      const buildUrl = "Build";
+      const loaderUrl = buildUrl + "/b23dd96997961653e2825455633aac82.loader.js";
+
+      const config = {
+        dataUrl: buildUrl + "/6b3979998573570607988d1c38d18d58.data.unityweb",
+        frameworkUrl: buildUrl + "/f12e287c5c85cf0683834fa728c7c1e2.framework.js.unityweb",
+        codeUrl: buildUrl + "/9e870e5953c2b941c50b35a3f63d6b5c.wasm.unityweb",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "VIA",
+        productName: "KystAR",
+        productVersion: "1.0",
+        devicePixelRatio: Math.min(window.devicePixelRatio, 2),
+      };
+
+      const script = document.createElement("script");
+      script.src = loaderUrl;
+      script.onload = () => {
+        createUnityInstance(canvas, config, (progress) => {
+          progressBarFull.style.width = progress * 100 + "%";
+        }).then((unityInstance) => {
+          loadingBar.style.display = "none";
+        }).catch((err) => {
+          alert(err);
+        });
+      };
+      document.body.appendChild(script);
+    };
+
+    window.addEventListener("resize", fillScreen);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", fillScreen);
+    }
+    window.addEventListener("orientationchange", () => {
+      setTimeout(fillScreen, 300);
+    });
+
+    fillScreen();
+  </script>
+</body>
+</html>
