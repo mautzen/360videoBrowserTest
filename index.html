@@ -3,45 +3,85 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <title>KystAR | Universal</title>
+  <title>KystAR</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
 
   <style>
+    /* 1. LOCK THE VIEWPORT */
     html, body {
       margin: 0; padding: 0; background: black;
-      width: 100%; height: 100%; overflow: hidden;
-      position: fixed; left: 0; top: 0;
+      width: 100%; height: 100%; height: 100dvh;
+      overflow: hidden; position: fixed; left: 0; top: 0;
+      touch-action: none; overscroll-behavior: none;
     }
     #unity-container {
       width: 100%; height: 100%; position: relative;
-      background: #000; overflow: hidden; box-sizing: border-box;
-      padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      background: #000; overflow: hidden;
     }
     #unity-canvas { background: black; display: block; width: 100%; height: 100%; }
+
+    /* 2. THE START BUTTON OVERLAY */
     #custom-start-overlay {
-      position: absolute; inset: 0; background: rgba(0,0,0,0.85);
+      position: absolute; inset: 0; background: rgba(0,0,0,0.9);
       display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000;
     }
     #btn-play {
       padding: 20px 40px; font-size: 24px; color: white;
       background: #2196F3; border: none; border-radius: 12px; cursor: pointer;
+      font-family: sans-serif; font-weight: bold;
     }
+
+    /* 3. LOADING BAR */
     #unity-loading-bar {
       display: none; position: absolute; top: 50%; left: 50%;
       transform: translate(-50%, -50%); text-align: center;
     }
-    #unity-progress-bar-empty { width: 200px; height: 10px; background: #333; margin-top: 10px; }
-    #unity-progress-bar-full { width: 0%; height: 100%; background: white; }
+    #unity-progress-bar-empty { width: 200px; height: 10px; background: #333; margin-top: 10px; border-radius: 5px; }
+    #unity-progress-bar-full { width: 0%; height: 100%; background: white; border-radius: 5px; transition: width 0.2s; }
+
+    /* 4. ORIENTATION WARNING STYLE */
+    #orientation-warning {
+      display: none; 
+      position: fixed; inset: 0; background: #000; color: white;
+      z-index: 9999; flex-direction: column; justify-content: center; align-items: center;
+      text-align: center; font-family: sans-serif;
+    }
+
+    @media screen and (orientation: portrait) and (max-width: 1024px) {
+      #orientation-warning { display: flex; }
+    }
+
+    .rotate-icon {
+      font-size: 60px; margin-bottom: 20px;
+      display: inline-block;
+      animation: rotate-phone 2s ease-in-out infinite;
+    }
+
+    @keyframes rotate-phone {
+      0% { transform: rotate(0deg); }
+      50% { transform: rotate(-90deg); }
+      100% { transform: rotate(0deg); }
+    }
   </style>
 </head>
 
 <body>
+  <div id="orientation-warning">
+    <div class="rotate-icon">&#128241;</div>
+    <p style="font-weight: bold;">Please rotate your device</p>
+    <p style="opacity: 0.7; font-size: 0.9em;">Landscape mode is required for this experience.</p>
+  </div>
+
   <div id="unity-container">
     <canvas id="unity-canvas" tabindex="-1"></canvas>
+    
     <div id="custom-start-overlay">
-      <button id="btn-play">START APP</button>
-      <p style="color:white; margin-top:10px; font-family: sans-serif;">Tap to begin experience</p>
+      <button id="btn-play">START EXPERIENCE</button>
+      <p style="color:white; margin-top:15px; font-family: sans-serif; opacity: 0.7; text-align:center; padding: 0 20px;">
+        Tap to begin. Make sure the device is in Landscape position.
+      </p>
     </div>
+
     <div id="unity-loading-bar">
       <div id="unity-progress-bar-empty"><div id="unity-progress-bar-full"></div></div>
     </div>
@@ -55,37 +95,61 @@
     const startOverlay = document.querySelector("#custom-start-overlay");
     const playButton = document.querySelector("#btn-play");
 
+    function unityShowBanner(msg, type) {
+      if (type !== 'error') return;
+      if (!document.getElementById('unity-crash-overlay')) {
+        var overlay = document.createElement('div');
+        overlay.id = 'unity-crash-overlay';
+        Object.assign(overlay.style, {
+          position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', flexDirection: 'column',
+          justifyContent: 'center', alignItems: 'center', zIndex: '9999',
+          color: 'white', fontFamily: 'sans-serif', textAlign: 'center', padding: '20px'
+        });
+        overlay.innerHTML = `<div><h2 style="color:#ff4444">Error</h2><p>${msg}</p>
+        <button onclick="location.reload()" style="padding:10px 20px; background:#2196F3; border:none; color:white; border-radius:5px;">REFRESH</button></div>`;
+        document.body.appendChild(overlay);
+      }
+    }
+
     function fillScreen() {
       const vv = window.visualViewport;
-      const vh = vv ? vv.height : window.innerHeight;
-      const vw = vv ? vv.width : window.innerWidth;
-      container.style.height = vh + "px";
-      container.style.width = vw + "px";
+      container.style.height = (vv ? vv.height : window.innerHeight) + "px";
+      container.style.width = (vv ? vv.width : window.innerWidth) + "px";
       window.scrollTo(0, 0);
     }
 
+    let started = false;
     playButton.onclick = async () => {
+      if (started) return;
+
+      // Anti-jump: check orientation before starting
+      if (window.innerHeight > window.innerWidth && window.innerWidth < 1024) {
+          alert("Please rotate to Landscape first!");
+          return;
+      }
+
+      started = true;
       startOverlay.style.display = "none";
       loadingBar.style.display = "block";
 
-      // Fullscreen/Landscape attempt
+      // Request Fullscreen & Orientation Lock
       if (container.requestFullscreen) { try { await container.requestFullscreen(); } catch (e) {} }
       try { if (screen.orientation?.lock) { await screen.orientation.lock("landscape"); } } catch (e) {}
       
       fillScreen();
 
-      const buildUrl = "Build";
-      const loaderUrl = buildUrl + "/7a2dbded24d57e056180125b1583e7c4.loader.js";
-
-      const config = {
-        dataUrl: buildUrl + "/328c7264a5442608739c4ea73280ebe9.data",
-        frameworkUrl: buildUrl + "/f12e287c5c85cf0683834fa728c7c1e2.framework.js",
-        codeUrl: buildUrl + "/9e870e5953c2b941c50b35a3f63d6b5c.wasm",
+      var buildUrl = "Build";
+      var loaderUrl = buildUrl + "/7a2dbded24d57e056180125b1583e7c4.loader.js";
+      var config = {
+        dataUrl: buildUrl + "/49ba9029ec7a0a5f335c42c49cf692a9.data",
+        frameworkUrl: buildUrl + "/af664c3ab7c8f905df324b69e000c297.framework.js",
+        codeUrl: buildUrl + "/862132dbe9c5d4e76241f7fcf6188835.wasm",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "VIA",
         productName: "KystAR",
         productVersion: "1.0",
-        // Notice: showBanner is removed entirely here
+        showBanner: unityShowBanner,
         devicePixelRatio: Math.min(window.devicePixelRatio, 2),
       };
 
@@ -98,14 +162,13 @@
           loadingBar.style.display = "none";
           setTimeout(fillScreen, 500);
         }).catch((err) => {
-          console.error(err); // Logs to browser console, but invisible to user
+          unityShowBanner(err, 'error');
         });
       };
       document.body.appendChild(script);
     };
 
     window.addEventListener("resize", fillScreen);
-    window.visualViewport?.addEventListener("resize", fillScreen);
     fillScreen();
   </script>
 </body>
