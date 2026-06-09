@@ -1,175 +1,504 @@
 <!DOCTYPE html>
 <html lang="en-us">
 <head>
-  <meta charset="utf-8" />
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <title>KuumAR</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- Character encoding -->
+    <meta charset="utf-8" />
 
-  <style>
-    /* 1. LOCK THE VIEWPORT */
-    html, body {
-      margin: 0; padding: 0; background: black;
-      width: 100%; height: 100%; height: 100dvh;
-      overflow: hidden; position: fixed; left: 0; top: 0;
-      touch-action: none; overscroll-behavior: none;
-    }
-    #unity-container {
-      width: 100%; height: 100%; position: relative;
-      background: #000; overflow: hidden;
-    }
-    #unity-canvas { background: black; display: block; width: 100%; height: 100%; }
+    <!-- Ensures correct text rendering in all browsers -->
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 
-    /* 2. THE START BUTTON OVERLAY */
-    #custom-start-overlay {
-      position: absolute; inset: 0; background: rgba(0,0,0,0.9);
-      display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000;
-    }
-    #btn-play {
-      padding: 20px 40px; font-size: 24px; color: white;
-      background: #2196F3; border: none; border-radius: 12px; cursor: pointer;
-      font-family: sans-serif; font-weight: bold;
-    }
+    <!-- Unity replaces this at build time -->
+    <!-- Example: "KuumAR" -->
+    <title>KuumAR</title>
 
-    /* 3. LOADING BAR */
-    #unity-loading-bar {
-      display: none; position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%, -50%); text-align: center;
-    }
-    #unity-progress-bar-empty { width: 200px; height: 10px; background: #333; margin-top: 10px; border-radius: 5px; }
-    #unity-progress-bar-full { width: 0%; height: 100%; background: white; border-radius: 5px; transition: width 0.2s; }
+    <!-- Viewport setup:
+         - disables zoom
+         - ensures full-screen rendering
+         - supports notched devices (iPhone safe areas)  Let my webpage stretch into the full screen — even behind notches and system UI. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
 
-    /* 4. ORIENTATION WARNING STYLE */
-    #orientation-warning {
-      display: none; 
-      position: fixed; inset: 0; background: #000; color: white;
-      z-index: 9999; flex-direction: column; justify-content: center; align-items: center;
-      text-align: center; font-family: sans-serif;
-    }
+    <style>
+        /* =========================================================
+           1. LOCK THE ENTIRE PAGE / VIEWPORT
+           =========================================================
+           Prevents scrolling, bouncing, zooming and ensures the
+           WebGL canvas behaves like a fullscreen app.
+        */
+        html, body {
+            margin: 0;
+            padding: 0;
+            background-color: #141414;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            position: fixed;
+            left: 0;
+            top: 0;
+            touch-action: none; /* Disable touch gestures like scroll/pinch */
+            overscroll-behavior: none; /* Prevent “rubber band” scrolling (iOS bounce) */
+        }
 
-    @media screen and (orientation: portrait) and (max-width: 1024px) {
-      #orientation-warning { display: flex; }
-    }
+        /* Fluid layout sizing net - relies on JS window orchestration */
+        /* Fluid layout sizing net - STRICT GLOBAL RULE */
+        #unity-container, #unity-canvas {
+            width: 100%; 
+            height: 100%;
+        }
 
-    .rotate-icon {
-      font-size: 60px; margin-bottom: 20px;
-      display: inline-block;
-      animation: rotate-phone 2s ease-in-out infinite;
-    }
+        /* Main Unity container wrapper */
+        #unity-container {
+            position: relative;
+            background: transparent;
+            overflow: hidden;
+        }
 
-    @keyframes rotate-phone {
-      0% { transform: rotate(0deg); }
-      50% { transform: rotate(-90deg); }
-      100% { transform: rotate(0deg); }
-    }
-  </style>
+        /* WebGL canvas element */
+        #unity-canvas {
+            background: black;
+            display: block;
+            touch-action: none; /* Secondary safety net for Safari zoom loops */
+        }
+
+        /* =========================================================
+           2. START SCREEN (USER INTERACTION REQUIRED)
+           =========================================================
+           Needed because:
+           - browsers require user interaction for fullscreen
+           - needed to unlock audio on mobile
+        */
+        #custom-start-overlay {
+            position: absolute;
+            inset: 0; /* shorthand: top/right/bottom/left = 0 */
+            /* Dark semi-transparent background */
+            background: rgba(0,0,0,0.9);
+            /* Center contents */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* above Unity */
+        }
+
+        /* Start button style */
+        #btn-play {
+            padding: 20px 40px;
+            font-size: 24px;
+            color: white;
+            background: #2196F3; /* blue*/
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-family: sans-serif;
+            font-weight: bold;
+        }
+
+        /* =========================================================
+           3. LOADING BAR
+           =========================================================
+           Shows progress of Unity assets downloading
+        */
+        #unity-loading-bar {
+            display: none; /* hidden until loading starts */
+
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%); /* Center horizontally/vertically */
+            text-align: center;
+        }
+
+        /* Loading background */
+        #unity-progress-bar-empty {
+            width: 200px;
+            height: 10px;
+            background: #333;
+            margin-top: 10px;
+            border-radius: 5px;
+        }
+
+        /* Loading progress (updated via JS) */
+        #unity-progress-bar-full {
+            width: 0%; /* updated dynamically */
+            height: 100%;
+            background: white;
+            border-radius: 5px;
+            /* smooth animation between updates */
+            transition: width 0.2s;
+        }
+
+        #loading-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* perfectly centers progress text with loading bar */
+        }
+
+        #unity-progress-text {
+            color: white;
+            margin-top: 10px;
+            font-family: sans-serif;
+        }
+
+
+        /* =========================================================
+           4. ORIENTATION WARNING (MOBILE LANDSCAPE ENFORCEMENT)
+           =========================================================
+        */
+        #orientation-warning {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #000;
+            color: white;
+            z-index: 9999;
+            /* Flexbox centering */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-family: sans-serif;
+        }
+
+            #orientation-warning p {
+                margin: 2px 0; /* top/bottom spacing */
+            }
+
+        /* Show ONLY when:
+           - portrait mode
+           - touchscreen device */
+        @media screen and (orientation: portrait) and (any-pointer: coarse) {
+            #orientation-warning {
+                display: flex;
+            }
+
+            /* Rotating phone icon */
+            .rotate-icon {
+                font-size: 60px;
+                margin-bottom: 20px;
+                display: inline-block;
+                animation: rotate-phone 2s ease-in-out infinite;
+            }
+
+            /* Rotation animation */
+            @keyframes rotate-phone {
+                0% {
+                    transform: rotate(0deg);
+                }
+
+                50% {
+                    transform: rotate(-90deg);
+                }
+
+                100% {
+                    transform: rotate(0deg);
+                }
+            }
+        }
+            /* =========================================================
+     Ensure FULLSCREEN
+     =========================================================
+     Ensures container + canvas fill entire screen when using
+     the Fullscreen button (desktop + mobile browsers) */
+        #unity-container:fullscreen,
+        #unity-container:-webkit-full-screen {
+            width: 100%;
+            height: 100%;
+            background: black;
+        }
+
+        #unity-container:fullscreen #unity-canvas,
+        #unity-container:-webkit-full-screen #unity-canvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
 </head>
 
 <body>
-  <div id="orientation-warning">
-    <div class="rotate-icon">&#128241;</div>
-    <p style="font-weight: bold;">Please rotate your device</p>
-    <p style="opacity: 0.7; font-size: 0.9em;">Landscape mode is required for this experience.</p>
-  </div>
+    <!-- =========================================================
+         ORIENTATION WARNING OVERLAY (SHOWN IN PORTRAIT ON MOBILE)
+    -->
+    <div id="orientation-warning">
 
-  <div id="unity-container">
-    <canvas id="unity-canvas" tabindex="-1"></canvas>
-    
-    <div id="custom-start-overlay">
-      <button id="btn-play">START EXPERIENCE</button>
-      <p style="color:white; margin-top:15px; font-family: sans-serif; opacity: 0.7; text-align:center; padding: 0 20px;">
-        Tap to begin. Make sure the device is in Landscape position.
-      </p>
+        <!-- Animated phone icon -->
+        <div class="rotate-icon">&#128241;</div>
+
+        <!-- Instruction text -->
+        <p style="font-weight: bold;">Please rotate your device</p>
+
+        <p style="opacity: 0.85; font-size: 0.9em; margin-top: 10px; ">
+            Landscape view is required for this experience.
+        </p>
+
+        <!-- Help text with icons -->
+        <p style="color: white; text-align: center; opacity: 0.85; font-size: 0.9em; ">
+            If the screen doesn’t rotate, turn on rotation in Quick Settings
+
+            <!-- SVG rotation icon that should match the one used on android  (visual hint for rotation/settings) -->
+            <svg xmlns="http://www.w3.org/2000/svg" height="1.2em" viewBox="0 0 24 24" width="1.2em" fill="currentColor" style="vertical-align: -0.2em; margin: 0 2px;">
+                <path d="M0 0h24v24H0V0z" fill="none" />
+                <path d="M16.48 2.52c3.27 1.55 5.61 4.72 5.97 8.48h1.5C23.44 4.84 18.29 0 12 0l-.66.03 3.81 3.81 1.33-1.32zm-6.25-.77c-.59-.59-1.54-.59-2.12 0L1.75 8.11c-.59.59-.59 1.54 0 2.12l12.02 12.02c.59.59 1.54.59 2.12 0l6.36-6.36c.59-.59.59-1.54 0-2.12L10.23 1.75zm4.6 19.44L2.81 9.17l6.36-6.36 12.02 12.02-6.36 6.36zm-7.31.29C4.25 19.94 1.91 16.76 1.55 13H.05C.56 19.16 5.71 24 12 24l.66-.03-3.81-3.81-1.33 1.32z" />
+            </svg>
+
+            or Control Center
+
+            <!-- Second SVG rotation icon that should match the one used on iOS -->
+            <svg xmlns="http://www.w3.org/2000/svg" height="1.45em" viewBox="0 0 24 24" width="1.45em" fill="currentColor" style="vertical-align: -0.32em; margin: 0 0px 0 -2px;">
+                <path d="M12 4c4.41 0 8 3.59 8 8s-3.59 8-8 8c-1.37 0-2.67-.35-3.82-.96l1.24-1.8A5.952 5.952 0 0012 18c3.31 0 6-2.69 6-6s-2.69-6-6-6v3l-4-4 4-4v3zm-2.5 5.5v-1c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v1c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5v-4c0-.83.67-1.5 1.5-1.5zm1 0h3v-1c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v1z" />
+            </svg>
+        </p>
     </div>
 
-    <div id="unity-loading-bar">
-      <div id="unity-progress-bar-empty"><div id="unity-progress-bar-full"></div></div>
+    <!-- =========================================================
+         UNITY MAIN CONTAINER
+    -->
+    <div id="unity-container">
+        <!-- WebGL Canvas -->
+        <canvas id="unity-canvas" tabindex="-1"></canvas>
+
+        <!-- Start overlay -->
+        <div id="custom-start-overlay">
+            <button id="btn-play">START EXPERIENCE</button>
+
+            <p style="color:white; margin-top:12px; font-family: sans-serif; opacity: 0.85; text-align:center; padding: 0 20px;">
+                Tap the button to begin.
+            </p>
+        </div>
+
+        <!-- Loading UI -->
+        <div id="unity-loading-bar">
+            <div id="loading-wrapper">
+                <div id="unity-progress-bar-empty">
+                    <div id="unity-progress-bar-full"></div>
+                </div>
+                <!-- percentage text -->
+                <div id="unity-progress-text">0%</div>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <script>
-    const container = document.querySelector("#unity-container");
-    const canvas = document.querySelector("#unity-canvas");
-    const loadingBar = document.querySelector("#unity-loading-bar");
-    const progressBarFull = document.querySelector("#unity-progress-bar-full");
-    const startOverlay = document.querySelector("#custom-start-overlay");
-    const playButton = document.querySelector("#btn-play");
+    <script>
+        /* =========================================================
+           CACHE IMPORTANT ELEMENTS
+           ========================================================= */
+        const container = document.querySelector("#unity-container");
+        const canvas = document.querySelector("#unity-canvas");
+        const loadingBar = document.querySelector("#unity-loading-bar");
+        const progressBarFull = document.querySelector("#unity-progress-bar-full");
+        const progressText = document.querySelector("#unity-progress-text");
+        const startOverlay = document.querySelector("#custom-start-overlay");
+        const playButton = document.querySelector("#btn-play");
 
-    function unityShowBanner(msg, type) {
-      if (type !== 'error') return;
-      if (!document.getElementById('unity-crash-overlay')) {
-        var overlay = document.createElement('div');
-        overlay.id = 'unity-crash-overlay';
-        Object.assign(overlay.style, {
-          position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-          backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', flexDirection: 'column',
-          justifyContent: 'center', alignItems: 'center', zIndex: '9999',
-          color: 'white', fontFamily: 'sans-serif', textAlign: 'center', padding: '20px'
+        /* =========================================================
+           UNITY ERROR HANDLER
+           ========================================================= */
+        function unityShowBanner(msg, type) {
+          if (type !== 'error') return;
+          if (document.getElementById('unity-crash-overlay')) return;
+
+          var overlay = document.createElement('div');
+          overlay.id = 'unity-crash-overlay';
+          Object.assign(overlay.style, {
+            position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+            backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', flexDirection: 'column',
+            justifyContent: 'center', alignItems: 'center', zIndex: '9999',
+            color: 'white', fontFamily: 'sans-serif', textAlign: 'center', padding: '20px'
+          });
+
+          overlay.innerHTML = `
+            <div>
+              <h2 style="color:#ff4444">Error</h2>
+              <p>${msg}</p>
+              <button onclick="location.reload()">REFRESH</button>
+            </div>
+          `;
+          document.body.appendChild(overlay);
+        }
+
+        /* Check fullscreen state */
+        function isFullscreenNow() {
+            return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+        }
+
+        /* Helper to notify Unity when fullscreen changes or drops natively */
+        function notifyUnityFullscreenState() {
+            if (!isFullscreenNow() && window.unityInstance) {
+                window.unityInstance.SendMessage("Fullscreen_container", "OnFullscreenExited", "Not in fullscreen anymore");
+            }
+        }
+
+        /* =========================================================
+   RESIZE / FIT SCREEN HANDLER
+   ========================================================= */
+        function fillScreen() {
+            const vv = window.visualViewport;
+
+            //  Check if the browser is actively rendering in element-fullscreen mode
+            const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+
+            //    If fullscreen, use the visual viewport (snaps to screen, handles notches perfectly).
+            //    If NOT fullscreen (like during the location prompt), use window.innerWidth/Height.
+            //    This keeps the canvas full-size under the popup instead of shrinking it.
+            const width = (isFullscreen && vv) ? vv.width : window.innerWidth;
+            const height = (isFullscreen && vv) ? vv.height : window.innerHeight;
+
+            container.style.width = width + "px";
+            container.style.height = height + "px";
+
+            if (canvas) {
+                canvas.style.width = width + "px";
+                canvas.style.height = height + "px";
+            }
+
+            window.scrollTo(0, 0);
+        }
+
+        function focusCanvas() {
+            if (canvas) canvas.focus();
+        }
+
+        let started = false;
+
+        /* =========================================================
+           START BUTTON HANDLER
+           ========================================================= */
+        playButton.onclick = async () => {
+          if (started) return;
+
+          if (window.matchMedia("(orientation: portrait)").matches && window.matchMedia("(pointer: coarse)").matches) {
+              alert("Please rotate to Landscape view!");
+              return;
+          }
+
+          started = true;
+          startOverlay.style.display = "none";
+          loadingBar.style.display = "block";
+
+          try {
+              if (container.requestFullscreen) {
+                  await container.requestFullscreen({ navigationUI: "hide" });
+              } else if (container.webkitRequestFullscreen) {
+                  container.webkitRequestFullscreen();
+              }
+          } catch (e) {
+              console.warn("Initial fullscreen request failed:", e);
+          }
+
+          try {
+            if (screen.orientation?.lock) {
+              await screen.orientation.lock("landscape");
+            }
+          } catch (e) { console.warn("Orientation lock failed:", e); }
+
+          fillScreen();
+
+          var buildUrl = "Build";
+          var loaderUrl = buildUrl + "/b23dd96997961653e2825455633aac82.loader.js";
+          var config = {
+            dataUrl: buildUrl + "/6b44556e7e17f2067ef8be5481c17537.data.unityweb",
+            frameworkUrl: buildUrl + "/5f529dbd2a82435dba22333cb7a3e0a6.framework.js.unityweb",
+            codeUrl: buildUrl + "/731f5f6a91fae6dd4354fef8dd5889c3.wasm.unityweb",
+            streamingAssetsUrl: "StreamingAssets",
+            companyName: "via",
+            productName: "KuumAR",
+            productVersion: "0.1",
+            showBanner: unityShowBanner,
+            devicePixelRatio: Math.min(window.devicePixelRatio, 2),
+          };
+
+          const script = document.createElement("script");
+          script.src = loaderUrl;
+          script.onload = () => {
+              createUnityInstance(canvas, config, (progress) => {
+                  const percent = Math.min(100, Math.floor(progress * 100));
+                  progressBarFull.style.width = percent + "%";
+                  progressText.textContent = percent + "%";
+              })
+              .then((unityInstance) => {
+                  loadingBar.style.display = "none";
+                  window.unityInstance = unityInstance;
+                  setTimeout(fillScreen, 500);
+              })
+              .catch((err) => {
+                 unityShowBanner(err, 'error');
+              });
+          };
+          document.body.appendChild(script);
+        };
+
+        /* Listeners for Fullscreen Changes */
+        // Listens for standard fullscreen enter/exit changes, such as entering fullscreen, leaving fullscreen, or pressing Escape.
+        document.addEventListener("fullscreenchange", () => {
+          focusCanvas();
+          notifyUnityFullscreenState();
+          setTimeout(fillScreen, 100);
         });
-        overlay.innerHTML = `<div><h2 style="color:#ff4444">Error</h2><p>${msg}</p>
-        <button onclick="location.reload()" style="padding:10px 20px; background:#2196F3; border:none; color:white; border-radius:5px;">REFRESH</button></div>`;
-        document.body.appendChild(overlay);
-      }
-    }
 
-    function fillScreen() {
-      const vv = window.visualViewport;
-      container.style.height = (vv ? vv.height : window.innerHeight) + "px";
-      container.style.width = (vv ? vv.width : window.innerWidth) + "px";
-      window.scrollTo(0, 0);
-    }
-
-    let started = false;
-    playButton.onclick = async () => {
-      if (started) return;
-
-      // Anti-jump: check orientation before starting
-      if (window.innerHeight > window.innerWidth && window.innerWidth < 1024) {
-          alert("Please rotate to Landscape first!");
-          return;
-      }
-
-      started = true;
-      startOverlay.style.display = "none";
-      loadingBar.style.display = "block";
-
-      // Request Fullscreen & Orientation Lock
-      if (container.requestFullscreen) { try { await container.requestFullscreen(); } catch (e) {} }
-      try { if (screen.orientation?.lock) { await screen.orientation.lock("landscape"); } } catch (e) {}
-      
-      fillScreen();
-
-      var buildUrl = "Build";
-      var loaderUrl = buildUrl + "/Parnumaa_TestFinalGPS_Gyro.loader.js";
-      var config = {
-        dataUrl: buildUrl + "/Parnumaa_TestFinalGPS_Gyro.data.unityweb",
-        frameworkUrl: buildUrl + "/Parnumaa_TestFinalGPS_Gyro.framework.js.unityweb",
-        codeUrl: buildUrl + "/Parnumaa_TestFinalGPS_Gyro.wasm.unityweb",
-        streamingAssetsUrl: "StreamingAssets",
-        companyName: "via",
-        productName: "KuumAR",
-        productVersion: "0.1",
-        showBanner: unityShowBanner,
-        devicePixelRatio: Math.min(window.devicePixelRatio, 2),
-      };
-
-      const script = document.createElement("script");
-      script.src = loaderUrl;
-      script.onload = () => {
-        createUnityInstance(canvas, config, (progress) => {
-          progressBarFull.style.width = (progress * 100) + "%";
-        }).then(() => {
-          loadingBar.style.display = "none";
-          setTimeout(fillScreen, 500);
-        }).catch((err) => {
-          unityShowBanner(err, 'error');
+        // Listens for older WebKit fullscreen enter/exit changes, mainly for Safari and some mobile browser compatibility.
+        document.addEventListener("webkitfullscreenchange", () => {
+          focusCanvas();
+          notifyUnityFullscreenState();
+          setTimeout(fillScreen, 100);
         });
-      };
-      document.body.appendChild(script);
-    };
+        // Listens for the page gaining focus again, such as after a permission popup closes or the user returns to the tab.
+        window.addEventListener("focus", () => {
+          focusCanvas();
+          setTimeout(fillScreen, 100);
+        });
 
-    window.addEventListener("resize", fillScreen);
-    fillScreen();
-  </script>
+       //Listens for the page becoming visible again after being hidden, such as after tab switching or app backgrounding.
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) {
+            focusCanvas();
+            setTimeout(fillScreen, 100);
+          }
+        });
+
+        // Listens for normal browser window size changes, such as desktop resizing, device rotation, or fullscreen layout changes.
+       window.addEventListener("resize", fillScreen);
+
+       // Checks if the browser supports the Visual Viewport API, which represents the actually visible part of the page on mobile.
+        if (window.visualViewport) {
+            // Listens for visible viewport size changes, such as browser UI, keyboard, or permission popup changes on mobile.
+            window.visualViewport.addEventListener("resize", fillScreen);
+            // Listens for visible viewport position shifts, such as mobile browser UI or permission popups moving the viewport.
+            window.visualViewport.addEventListener("scroll", fillScreen);
+        }
+
+        fillScreen();
+
+        // Location Workflow: Detects the restorative tap after permissions are settled
+        window.shouldRestoreFullscreenOnNextTap = false;
+
+        function attemptFullscreenRestore(event) {
+            if (!window.shouldRestoreFullscreenOnNextTap) return;
+
+            requestFullscreenForContainer();
+            window.shouldRestoreFullscreenOnNextTap = false;
+
+            if (window.unityInstance) {
+
+                window.unityInstance.SendMessage("Fullscreen_container", "OnFullscreenRestoredViaTouch", "Entered fullscreen by touching screen");
+            }
+        }
+
+        function requestFullscreenForContainer() {
+            if (!container) return;
+            let request = container.requestFullscreen || container.webkitRequestFullscreen || container.msRequestFullscreen;
+            if (request) {
+            // Safe evaluation via promise catching to avoid crashes on mobile browsers
+                Promise.resolve(request.call(container)).catch(function (err) {
+                console.warn("Fullscreen restoration failed on tap/click gesture: ", err);
+                });
+            }
+        }
+
+        // 1. Use pointerup/touchend to bypass Unity's blocked 'click' events.
+        // 2. Pass 'true' to use the Capture Phase, catching the event BEFORE Unity swallows it.
+        document.addEventListener("pointerup", attemptFullscreenRestore, true);
+        document.addEventListener("touchend", attemptFullscreenRestore, true);
+        document.addEventListener("click", attemptFullscreenRestore, true);
+
+        </script>
 </body>
 </html>
+
